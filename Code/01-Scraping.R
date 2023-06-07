@@ -8,11 +8,18 @@
 
 ### Preperations -------------------------------------------------------------
 
+  
+  rm(list = ls())
+  
   # Load the packages
   source("Functions/Packages.R") # Loads the packages
   source("Functions/Graphics.R") # Loads the graphic style
   source("Functions/Functions.R")# Loads the functions
   source("Functions/Account_information.R") # Load ths account information
+
+  # Years
+  start_year <- 1990
+  end_year   <- 2021
 
 ### Genesis Statistisches Bundesamt ------------------------------------------
 
@@ -37,117 +44,113 @@
   res <- genesis_api(task = "results", request)
   
   # create a data frame
-  variable_list <- res$Tables %>% do.call(rbind, .)
+  res <- res$List %>% bind_rows()
+  
+  # The search term
+  Code <- res[res$Content == "Bevölkerung: Kreise, Stichtag, Geschlecht, Altersgruppen", ]$Code |> 
+    str_remove("\\$FullCache-")
+  
   
   # Get the code
   Code <- "12411-0007"
 
-
 ### Variable manual ---------------------------------------------------
 
 # Set the path
-path <- paste0("https://www-genesis.destatis.de/genesisWS/web/RechercheService_2010?method=MerkmalsKatalog&kennung=", IHRE_KENNUNG ,"&passwort=", IHR_PASSWORT, 
-                "&filter=", filter, "&kriterium=", Code ,"&typ=alle&bereich=Alle&listenLaenge=99&sprache=de")
+path <- paste0("https://www-genesis.destatis.de/genesisWS/rest/2020/catalogue/tables?username=",
+               IHRE_KENNUNG, "&password=",
+               IHR_PASSWORT, "&selection=",
+               Code,"&area=all&searchcriterion=&sortcriterion=&pagelength=250&language=en")
+
+# Set the path
+path <- paste0("https://www-genesis.destatis.de/genesisWS/rest/2020/data/timeseries?username=",
+               IHRE_KENNUNG, "&password=",
+               IHR_PASSWORT, "&name=",
+               Code, "&area=all&compress=false&transpose=false&contents=&",
+               start_year, "=&",
+               end_year, "=&timeslices=&regionalvariable=&regionalkey=&regionalkeycode=&classifyingvariable1=&classifyingkey1=&classifyingkeycode1=&classifyingvariable2=&classifyingkey2=&classifyingkeycode2=&classifyingvariable3=&classifyingkey3=&classifyingkeycode3=&job=false&stand=01.01.1970&language=de")
   
 # Load the data
-resp <- read_html(path)
+resp <- GET(path)
 
-# Variablenliste
-resp %>% html_element("sections")
 
 
 ### Load the data series ----------------------------------------------
 
+# Set the API endpoint URL
+url <- "https://www-genesis.destatis.de/genesisWS/rest/online?"
 
-#
-fromJSON(content(resp, "text"))
+# Set the parameters for the API request
+parameters <- list(
+  "method" = "GetTable",
+  "tableId" = "12411",  # Table ID for population data
+  "format" = "json",
+  "query" = list(
+    list(
+      "key" = "REG",
+      "values" = c("01", "02", "03"),  # Example: Region codes for Berlin, Hamburg, and Bavaria
+      "type" = "code"
+    ),
+    list(
+      "key" = "BEVSTD__ALTER__GESCHLECHT",
+      "values" = "*",  # Retrieve available age groups and genders dynamically
+      "type" = "code"
+    ),
+    list(
+      "key" = "TIME",
+      "values" = "*",  # All available years
+      "type" = "code"
+    )
+  )
+)
 
-# Extract the results
-results <- results$Object
-results %>% str_split(pattern = "\nmännlich") %>%  colsplit(.,  ";", names = c("Age", "Kreis", "Pop"))
+# Send the API request
+response <- GET(url, query = parameters)
 
-#### load entire data frame ------------------------------------------------
+# Check the status of the response
+if (http_type(response) == "application/json") {
+  # Parse the JSON response
+  data <- fromJSON(content(response, "text", encoding = "UTF-8"), flatten = TRUE)
+  
+  # Extract the available age groups and genders from the response
+  age_groups <- unique(data$Result$data$BEVSTD__ALTER__GESCHLECHT)
+  
+  # Modify the parameter values for age groups and genders
+  parameters$query[[2]]$values <- age_groups
+  
+  # Send the API request again with updated parameters
+  response <- GET(url, query = parameters)
+  
+  # Check the status of the updated response
+  if (http_type(response) == "application/json") {
+    # Parse the JSON response
+    data <- fromJSON(content(response, "text", encoding = "UTF-8"), flatten = TRUE)
+    
+    # Extract the data frame from the response
+    population_data <- data$Result$data
+    
+    # Print the first few rows of the data frame
+    print(head(population_data))
+  } else {
+    print("Error: Failed to retrieve data.")
+  }
+} else {
+  print("Error: Failed to retrieve data.")
+}
 
-# load the table
-r <- load_table_DE()
-
-
-# Test, get the IP adress
-path <- "helloworld/whoami"
-
-# Load the information
-genesis_api(path)
-
-path <- paste0("https://www-genesis.destatis.de/genesisWS/rest/2020/", path = path)
-
-resp <- GET(url)
-
-#### Extracting information using jsonlite ---------------------------------
-
-#save url
-url <- paste0("https://www-genesis.destatis.de/genesisWS/rest/2020/helloworld/logincheck?username=", IHRE_KENNUNG, "&password=", IHR_PASSWORT, "&language=de")
-
-r <- GET(url)
-r$content
-http_type(r)
-
-#
-jsonlite::fromJSON(content(r, "text"), simplifyVector = FALSE)
-
-
-# Prepare request
-url <- "https://www-genesis.destatis.de/genesisWS/rest/2020/" 
-task <- "find/find?"
-# login <- 
-parameters <- "&term=population&category=all&pagelength=100&language=en"
-
-
-# Using httr code
-GET(paste0(url, task, login, parameters))
-
-# Get the information from the website
-r <- GET(url)
-r <- fromJSON(content(r, "text"), simplifyVector =  T)
-pop_data <- r$Tables
-table <- pop_data %>% filter(Code == data_nr)
-
-### Set the parameters
-
-# Number of the dataset: Bevölkerung, Kreise, Geschlecht, Altersgruppen
-data_nr <- "12411-0018"
-start_year <- 2010
-end_year <- 2011
-data_nr <- "12411"
-
-
-# Set the url for time-series download
-url <- paste0("https://www-genesis.destatis.de/genesisWS/rest/2020/data/table?username=",
-       IHRE_KENNUNG, "&passwort=", IHR_PASSWORT, "&name", data_nr, "&area=all&compress=false&transpose=false&startyear=",
-       start_year, "&endyear=", end_year, "&timeslices=", end_year-start_year,
-"&regionalvariable=&regionalkey=&classifyingvariable1=KREISE&classifyingkey1=1001&classifyingvariable2=Geschlecht&classifyingkey2=GES&classifyingvariable3=Altersgruppen&classifyingkey3=ALTX20&job=false&stand=01.01.2021&language=de")
-
-# Load the data
-data <- GET(url)
-
-# Set the url
-url <- paste0("https://www-genesis.destatis.de/genesisWS/rest/2020/data/timeseries?username=", IHRE_KENNUNG ,"&password=", IHR_PASSWORT, "&name=", data_nr,
-              "&area=all&compress=false&transpose=false&contents=&startyear=", start_year, "&endyear=", end_year, "&timeslices=&regionalvariable=&regionalkey=&regionalkeycode=&classifyingvariable1=&classifyingkey1=&classifyingkeycode1=&classifyingvariable2=&classifyingkey2=&classifyingkeycode2=&classifyingvariable3=&classifyingkey3=&classifyingkeycode3=&job=false&stand=&language=de")
-
-# Using jsonData
-jsonData <- fromJSON(url)
-
-jsonData
-
-# get the website informaiton
-r <- GET(url)
-
-# get status of request 
-http_status(r)
-
-#### Simulate the data ---------------------------------
-
-# Create the data
+### Look at the data -----------------------------------------------
 
 
+# Status cod
+status_code(resp)
+
+# Content
+content(resp)
+
+# Get the body content
+content(resp, "parsed")
+
+# Read the content
+content(resp, "text")
 ########    END     #########
   

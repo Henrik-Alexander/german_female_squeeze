@@ -25,7 +25,7 @@ tab <- function(...){
 
 #### Load country specific functions ------------------------
 
-source("Functions/Functions_Mexico.R")
+source("Functions/Functions_germany.R")
 
 #### Life table function ------------------------------------
 
@@ -113,19 +113,88 @@ pop_share <- function(population){
   return(share)
 }
 
-#### Estimate the difference --------------------------------
 
-difference <- function(x, y){
-  diff <- y - x
-  return(diff)
+#### Genesis API -----------------------------------
+
+# Load data from genesis
+genesis_api <- function(task = "results", request) {
+  
+  # select the task
+  tmp <- request %>% filter(names == task) 
+  
+  #  select the task
+  task <- tmp[1, 2]
+  
+  # select the end of the inquire
+  ending <- tmp[1, 3]
+  
+  # create url
+  url <- paste0("https://www-genesis.destatis.de/genesisWS/rest/2020/", task, login, ending)
+  
+  # scrape the data from the website
+  resp <- GET(url)
+  if (http_type(resp) != "application/json") {
+    stop("API did not return json", call. = FALSE)
+  }
+  
+  jsonlite::fromJSON(content(resp, "text"), simplifyVector = FALSE)
 }
 
-#### Average ------------------------------------------------
 
-averaging <- function(x, y){
-  m <- (y + x) / 2
-  return(m)
+#### Load the data from germany -----------------------------
+
+
+# Function to call the data
+load_data_DE <- function(data_nr = "12411KJ0018",start = 2015, end = 2015) {
+  
+  #create the url
+  url <- paste0("https://www-genesis.destatis.de/genesisWS/rest/2020/data/timeseries?username=", IHRE_KENNUNG ,"&password=", IHR_PASSWORT, "&name=", data_nr,
+                "&area=all&compress=false&transpose=false&contents=BEVSTD&startyear=", start, "&endyear=", end, "&timeslices=&regionalvariable=0018&regionalkey=&regionalkeycode=&classifyingvariable1=Geschlecht&classifyingkey1=weiblich&classifyingkeycode1=GESW&classifyingvariable2=&classifyingkey2=&classifyingkeycode2=&classifyingvariable3=&classifyingkey3=KREISE&classifyingkeycode3=&job=false&stand=&language=de")
+  
+  resp <- GET(url)
+  
+  if (http_type(resp) != "application/json") {
+    stop("API did not return json", call. = FALSE)
+  }
+  
+  jsonlite::fromJSON(content(resp, "text"), simplifyVector = FALSE)
 }
+
+
+### Load tables Germany -------------------------------------
+
+# Function to call the data
+load_table_DE <- function(data_nr = "12411KJ0018",start = 2015, end = 2015) {
+  
+  #create the url
+  url <- paste0("https://www-genesis.destatis.de/genesisWS/rest/2020/data/tablefile?username=", IHRE_KENNUNG ,"&password=", IHR_PASSWORT, "&name=", data_nr,
+                "&area=all&compress=false&transpose=false&startyear=", start, "&endyear=", end, "&timeslices=&regionalvariable=0018&regionalkey=&regionalkeycode=&classifyingvariable1=GES&classifyingkey1=&classifyingkeycode1=&classifyingvariable2=&classifyingkey2=&classifyingkeycode2=&classifyingvariable3=&classifyingkey3=KREISE&classifyingkeycode3=&format=csv&job=false&stand=&language=de")
+  
+  resp <- GET(url)
+  
+  if (http_type(resp) != "application/json") {
+    stop("API did not return json", call. = FALSE)
+  }
+  
+  jsonlite::fromJSON(content(resp, "text"), simplifyVector = FALSE)
+}
+
+
+#### Negate in function -------------------------------------
+
+`%!in%` <- negate(`%in%`)
+
+
+#### Tabulate function --------------------------------------
+
+
+tab <- function(...){
+  
+  tmp <- table(..., useNA = "always")
+  return(tmp)
+  
+}
+
 
 #####               END               ########################
 
